@@ -39,6 +39,9 @@ import java.util.Map;
 
 public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
     private GoogleApiClient _apiClient;
+    private GoogleApiClient.ConnectionCallbacks signoutConnectionListener;
+    private GoogleApiClient.ConnectionCallbacks signInConnectionListener;
+
 
     public static final int RC_SIGN_IN = 9001;
 
@@ -86,13 +89,12 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
         GoogleApiAvailability googleApiAvailability = GoogleApiAvailability.getInstance();
         int status = googleApiAvailability.isGooglePlayServicesAvailable(activity);
 
-        if(status != ConnectionResult.SUCCESS) {
+        if (status != ConnectionResult.SUCCESS) {
             promise.reject("" + status, "Play services not available");
-            if(autoresolve && googleApiAvailability.isUserResolvableError(status)) {
+            if (autoresolve && googleApiAvailability.isUserResolvableError(status)) {
                 googleApiAvailability.getErrorDialog(activity, status, 2404).show();
             }
-        }
-        else {
+        } else {
             promise.resolve(true);
         }
     }
@@ -169,6 +171,28 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
             return;
         }
 
+        if (!_apiClient.isConnected()) {
+            signInConnectionListener = new GoogleApiClient.ConnectionCallbacks() {
+                @Override
+                public void onConnected(Bundle bundle) {
+                    _signIn();
+                }
+
+                @Override
+                public void onConnectionSuspended(int cause) {
+                }
+            };
+
+            _apiClient.connect();
+            _apiClient.registerConnectionCallbacks(signInConnectionListener);
+        } else {
+            _signIn();
+        }
+    }
+
+    private void _signIn() {
+        cleanListener(signInConnectionListener);
+
         final Activity activity = getCurrentActivity();
 
         if (activity == null) {
@@ -192,6 +216,28 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
             return;
         }
 
+        if (!_apiClient.isConnected()) {
+            signoutConnectionListener = new GoogleApiClient.ConnectionCallbacks() {
+                @Override
+                public void onConnected(Bundle bundle) {
+                    _signOut();
+                }
+
+                @Override
+                public void onConnectionSuspended(int cause) {
+                }
+            };
+
+            _apiClient.connect();
+            _apiClient.registerConnectionCallbacks(signoutConnectionListener);
+        } else {
+            _signOut();
+        }
+    }
+
+    private void _signOut() {
+        cleanListener(signoutConnectionListener);
+
         Auth.GoogleSignInApi.signOut(_apiClient).setResultCallback(new ResultCallback<Status>() {
             @Override
             public void onResult(Status status) {
@@ -205,6 +251,12 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
                 }
             }
         });
+    }
+
+    private void cleanListener(GoogleApiClient.ConnectionCallbacks listener) {
+        if (listener != null) {
+            _apiClient.unregisterConnectionCallbacks(listener);
+        }
     }
 
     @ReactMethod
@@ -247,10 +299,10 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
 
     /* Private API */
 
-    private  String  scopesToString(ReadableArray scopes) {
-        String temp ="oauth2:";
+    private String scopesToString(ReadableArray scopes) {
+        String temp = "oauth2:";
         for (int i = 0; i < scopes.size(); i++) {
-            temp += scopes.getString(i)+" ";
+            temp += scopes.getString(i) + " ";
         }
         return temp.trim();
     }
@@ -275,11 +327,11 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
         int size = scopes.size();
         Scope[] _scopes = new Scope[size];
 
-        if(scopes != null && size > 0){
-            for(int i = 0; i < size; i++){
-                if(scopes.getType(i).name().equals("String")){
+        if (scopes != null && size > 0) {
+            for (int i = 0; i < size; i++) {
+                if (scopes.getType(i).name().equals("String")) {
                     String scope = scopes.getString(i);
-                    if (!scope.equals("email")){ // will be added by default
+                    if (!scope.equals("email")) { // will be added by default
                         _scopes[i] = new Scope(scope);
                     }
                 }
@@ -311,7 +363,7 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
             GoogleSignInAccount acct = result.getSignInAccount();
             Uri photoUrl = acct.getPhotoUrl();
 
-            for(Scope scope : acct.getGrantedScopes()) {
+            for (Scope scope : acct.getGrantedScopes()) {
                 String scopeString = scope.toString();
                 if (scopeString.startsWith("http")) {
                     scopes.pushString(scopeString);
@@ -327,7 +379,7 @@ public class RNGoogleSigninModule extends ReactContextBaseJavaModule {
             params.putArray("scopes", scopes);
 
             getReactApplicationContext().getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                    .emit(isSilent ? "RNGoogleSignInSilentSuccess" : "RNGoogleSignInSuccess" , params);
+                    .emit(isSilent ? "RNGoogleSignInSilentSuccess" : "RNGoogleSignInSuccess", params);
         } else {
             int code = result.getStatus().getStatusCode();
             String error = GoogleSignInStatusCodes.getStatusCodeString(code);
